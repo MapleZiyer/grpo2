@@ -32,7 +32,6 @@ et-xmlfile>=1.1.0
 exceptiongroup>=1.1.0
 executing>=1.2.0
 fairscale>=0.4.13
-faiss-gpu>=1.7.2
 filelock>=3.8.2
 flake8>=6.0.0
 flake8-bugbear>=23.2.13

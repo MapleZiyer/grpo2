@@ -10,6 +10,8 @@ from typing import List, Dict, Any
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from ProgramFC.models.program_generator import Reasoning_Program_Generator
+from ProgramFC.models.program_execution import Program_Execution
 
 class HoverDataset(Dataset):
     def __init__(self, data_path: str, tokenizer: T5Tokenizer, max_length: int = 512):
@@ -23,6 +25,8 @@ class HoverDataset(Dataset):
         import json
         with open(data_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
+        # 过滤出label为refutes的数据
+        data = [item for item in data if item.get('label') == 'refutes']
         return data
 
     def __len__(self):
@@ -31,41 +35,34 @@ class HoverDataset(Dataset):
     def __getitem__(self, idx):
         item = self.data[idx]
         # 处理输入文本和目标文本
-        input_text = item['input_text']
-        target_text = item['target_text']
+        input_text = item['claim']
+        evidence = item['evidence']
+        id = item['id']
+        num_hops = item['num_hops']
         
         # 编码输入
         inputs = self.tokenizer(
             input_text,
+            evidence,
             max_length=self.max_length,
             padding='max_length',
             truncation=True,
             return_tensors='pt'
-        )
-        
-        # 编码目标
-        with self.tokenizer.as_target_tokenizer():
-            labels = self.tokenizer(
-                target_text,
-                max_length=self.max_length,
-                padding='max_length',
-                truncation=True,
-                return_tensors='pt'
-            )
+        )     
         
         return {
             'input_ids': inputs.input_ids.squeeze(),
             'attention_mask': inputs.attention_mask.squeeze(),
-            'labels': labels.input_ids.squeeze(),
             'raw_input': input_text,
-            'raw_target': target_text
+            'raw_evidence': evidence,
+            'id' : id,
+            'num_hops': num_hops
         }
 
 class GRPO:
     def __init__(
         self,
         model: T5ForConditionalGeneration,
-        reward_model: nn.Module,
         tokenizer: T5Tokenizer,
         device: torch.device,
         learning_rate: float = 1e-5,
@@ -75,10 +72,11 @@ class GRPO:
         warmup_steps: int = 1000,
         max_grad_norm: float = 1.0,
         temperature: float = 1.0,
-        top_p: float = 0.9
+        top_p: float = 0.9,
+        program_generator = Reasoning_Program_Generator(),
+        program_executor = Program_Execution()
     ):
         self.model = model
-        self.reward_model = reward_model
         self.tokenizer = tokenizer
         self.device = device
         self.eps_clip = eps_clip
@@ -89,6 +87,8 @@ class GRPO:
         self.temperature = temperature
         self.top_p = top_p
         self.global_step = 0
+        self.program_generator = program_generator
+        self.program_executor = program_executor
         
         # 使用AdaFactor优化器
         from transformers import Adafactor
@@ -99,12 +99,6 @@ class GRPO:
             relative_step=True,
             warmup_init=True
         )
-
-    def compute_rewards(self, generated_outputs: List[str], reference_outputs: List[str]) -> torch.Tensor:
-        # 使用奖励模型计算奖励值
-        with torch.no_grad():
-            rewards = self.reward_model(generated_outputs, reference_outputs)
-        return rewards
 
     def train_step(self, batch: Dict[str, Any]) -> Dict[str, float]:
         # 动态调整temperature
@@ -125,7 +119,8 @@ class GRPO:
         
         # 解码生成的序列
         generated_texts = self.tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
-        reference_texts = [batch['raw_target']]
+        reference_texts = [batch['raw_input']]
+        evidence_texts = [batch['evidence']]
         
         original_embedding = self.similarity_model.encode([reference_texts])
         corrected_embedding = self.similarity_model.encode([generated_texts])
@@ -137,8 +132,20 @@ class GRPO:
         if similarity < 0.7:
             rewards = 0.0
         else:
-            # 计算奖励
-            rewards = self.compute_rewards(generated_texts, reference_texts)
+            decomposing_output = self.program_generator.batch_generate_programs(generated_texts)
+            print(decomposing_output)
+            sample = [{
+                "idx":0,
+                "id":batch['id'],
+                "claim":generated_texts,
+                "gold":"",
+                "predicted_programs":decomposing_output
+            }]
+            final_prediction = self.program_executor.execute_on_dataset(sample)
+            if final_prediction:
+                rewards = 1.0
+            else:
+                rewards = 0.0
         
         # 计算策略梯度
         old_log_probs = outputs.scores[0].log_softmax(dim=-1)
@@ -207,14 +214,9 @@ def main():
     if world_size > 1:
         model = DDP(model, device_ids=[rank])
     
-    # 加载奖励模型（需要根据实际情况修改）
-    reward_model = torch.load('path_to_reward_model.pt', map_location=device)
-    if world_size > 1:
-        reward_model = DDP(reward_model, device_ids=[rank])
-    
     # 初始化数据集和分布式采样器
     train_dataset = HoverDataset(
-        data_path='path_to_hover_dataset.json',
+        data_path='./train.json',
         tokenizer=tokenizer
     )
     sampler = DistributedSampler(train_dataset) if world_size > 1 else None
@@ -229,7 +231,6 @@ def main():
     # 初始化训练器
     trainer = GRPO(
         model=model,
-        reward_model=reward_model,
         tokenizer=tokenizer,
         device=device
     )

@@ -4,13 +4,24 @@ import os
 import asyncio
 from typing import Any
 
-@backoff.on_exception(backoff.expo, openai.OpenAIError)
-def completions_with_backoff(**kwargs):
-    return openai.Completion.create(**kwargs)
+openai.api_base = "https://api.bianxie.ai/v1"
 
 @backoff.on_exception(backoff.expo, openai.OpenAIError)
+@backoff.on_exception(backoff.expo, (openai.OpenAIError, TimeoutError), max_tries=3)
+def completions_with_backoff(**kwargs):
+    try:
+        return openai.Completion.create(**kwargs, timeout=30)
+    except Exception as e:
+        print(f"OpenAI API Error: {str(e)}")
+        raise
+
+@backoff.on_exception(backoff.expo, (openai.OpenAIError, TimeoutError), max_tries=3)
 def chat_completions_with_backoff(**kwargs):
-    return openai.ChatCompletion.create(**kwargs)
+    try:
+        return openai.ChatCompletion.create(**kwargs, timeout=30)
+    except Exception as e:
+        print(f"OpenAI API Error: {str(e)}")
+        raise
 
 async def dispatch_openai_chat_requests(
     messages_list: list[list[dict[str,Any]]],
@@ -20,30 +31,26 @@ async def dispatch_openai_chat_requests(
     top_p: float,
     stop_words: list[str]
 ) -> list[str]:
-    """Dispatches requests to OpenAI API asynchronously.
-    
-    Args:
-        messages_list: List of messages to be sent to OpenAI ChatCompletion API.
-        model: OpenAI model to use.
-        temperature: Temperature to use for the model.
-        max_tokens: Maximum number of tokens to generate.
-        top_p: Top p to use for the model.
-        stop_words: List of words to stop the model from generating.
-    Returns:
-        List of responses from OpenAI API.
-    """
-    async_responses = [
-        openai.ChatCompletion.acreate(
-            model=model,
-            messages=x,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            top_p=top_p,
-            stop = stop_words
-        )
-        for x in messages_list
-    ]
-    return await asyncio.gather(*async_responses)
+    try:
+        async_responses = [
+            openai.ChatCompletion.acreate(
+                model=model,
+                messages=x,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                top_p=top_p,
+                stop = stop_words,
+                timeout=30
+            )
+            for x in messages_list
+        ]
+        print(f"Sending {len(messages_list)} requests to OpenAI API...")
+        responses = await asyncio.gather(*async_responses)
+        print("Successfully received all API responses")
+        return responses
+    except Exception as e:
+        print(f"Error in batch API requests: {str(e)}")
+        raise
 
 async def dispatch_openai_prompt_requests(
     messages_list: list[list[dict[str,Any]]],

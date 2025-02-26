@@ -38,6 +38,11 @@ class Program_Execution:
         self.corpus_index_path = './datasets/HOVER/corpus/index'
         # load retriever
         if self.setting == 'open-book':
+            # 确保Java环境变量设置正确
+            import os
+            java_home = os.environ.get('JAVA_HOME')
+            if not java_home:
+                os.environ['JAVA_HOME'] = '/usr/lib/jvm/java-17-openjdk-amd64'  # 设置默认Java路径
             self.searcher = PyseriniRetriever(self.corpus_index_path, use_bm25=True, k1=0.9, b=0.4)
         else:
             self.searcher = None

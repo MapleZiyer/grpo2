@@ -1,5 +1,5 @@
-from prompts import Prompt_Loader
-from utils import OpenAIModel
+from ProgramFC.models.prompts import Prompt_Loader
+from ProgramFC.models.utils import OpenAIModel
 
 class Reasoning_Program_Generator:
     def __init__(self):

@@ -3,12 +3,8 @@ from transformers import T5Tokenizer, T5ForConditionalGeneration
 import random
 from tqdm import tqdm
 import re
-import os
-import json
-
-from question_answering import T5_Question_Answering
-from retriever import PyseriniRetriever
-from evaluate import print_evaluation_results
+from ProgramFC.models.question_answering import T5_Question_Answering
+from ProgramFC.models.retriever import PyseriniRetriever
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -30,30 +26,25 @@ def parse_args():
     return args
 
 class Program_Execution:
-    def __init__(self, args) -> None:
+    def __init__(self) -> None:
         # load model
-        self.args = args
-        CACHE_DIR = args.cache_dir
-        self.model_name = args.model_name
-        self.dataset_name = args.dataset_name
-        print(f"Loading model {self.model_name}...")
-        self.tokenizer = T5Tokenizer.from_pretrained(self.model_name, cache_dir= CACHE_DIR)
-        self.model = T5ForConditionalGeneration.from_pretrained(self.model_name, cache_dir= CACHE_DIR)
+        self.model_name = 'google/flan-t5-xl'
+        self.dataset_name = 'HOVER'
+        self.tokenizer = T5Tokenizer.from_pretrained(self.model_name)
+        self.model = T5ForConditionalGeneration.from_pretrained(self.model_name)
         self.model.parallelize()
-        print(f"Model {self.model_name} loaded.")
-
+        self.setting = 'gold'
         self.QA_module = T5_Question_Answering(self.model, self.tokenizer)
-
+        self.corpus_index_path = './datasets/HOVER/corpus/index'
         # load retriever
-        if self.args.setting == 'open-book':
-            self.searcher = PyseriniRetriever(self.args.corpus_index_path, use_bm25=True, k1=0.9, b=0.4)
+        if self.setting == 'open-book':
+            self.searcher = PyseriniRetriever(self.corpus_index_path, use_bm25=True, k1=0.9, b=0.4)
         else:
             self.searcher = None
+        self.sample = None
 
         # load dataset
-        with open(os.path.join(args.FV_data_path, args.dataset_name, 'claims', f'dev.json'), 'r') as f:
-            dataset = json.load(f)
-        self.gold_evidence_map = {sample['id']:sample['evidence'] for sample in dataset}
+        self.gold_evidence_map = None
 
     def map_direct_answer_to_label(self, predict):
         predict = predict.lower().strip()
@@ -174,11 +165,10 @@ class Program_Execution:
         
         return final_answer, retrieved_evidence
 
-    def execute_on_dataset(self):
-        # load generated program
-        with open(os.path.join(self.args.program_dir, self.args.program_file_name), 'r') as f:
-            dataset = json.load(f)
-        dataset = dataset if self.args.num_eval_samples < 0 else dataset[:self.args.num_eval_samples]
+    def execute_on_dataset(self, sample):
+        self.sample = sample
+        self.gold_evidence_map = {sample['id']:sample['evidence']}
+        dataset = self.sample
 
         gt_labels, predictions = [], []
         results = []
@@ -206,21 +196,8 @@ class Program_Execution:
                             'claim': sample['claim'],
                             'gold': sample['gold'], 
                             'prediction': 'supports' if final_prediction == True else 'refutes'})
-        
-        # evaluate
-        self.evaluation(predictions, gt_labels)
-
-        # save results to file
-        output_path = os.path.join(self.args.output_dir, '{}_{}'.format(self.model_name.split('/')[-1], self.args.setting))
-        if not os.path.exists(output_path):
-            os.makedirs(output_path)
-
-        output_file_name = f'{self.args.dataset_name}.program.json'
-        with open(os.path.join(output_path, output_file_name), 'w') as f:
-           f.write(json.dumps(results, indent = 2))
-
-    def evaluation(self, predictions, gt_labels):
-        print_evaluation_results(predictions, gt_labels, num_of_classes=2)
+            print(final_prediction)
+            return final_prediction
 
 if __name__ == "__main__":
     args = parse_args()

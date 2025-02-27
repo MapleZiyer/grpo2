@@ -98,7 +98,7 @@ class GRPO:
             model.parameters(),
             lr=learning_rate,
             scale_parameter=True,
-            relative_step=True,
+            relative_step=False,
             warmup_init=True
         )
 

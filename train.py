@@ -134,7 +134,7 @@ class GRPO:
             # 解码生成的序列
             generated_texts = self.tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
             reference_texts = [batch['raw_input']]
-            evidence_texts = [batch['evidence']]
+            evidence_texts = [batch['raw_evidence']]
             
             original_embedding = self.similarity_model.encode([reference_texts])
             corrected_embedding = self.similarity_model.encode([generated_texts])
@@ -153,7 +153,8 @@ class GRPO:
                     "id":batch['id'],
                     "claim":generated_texts,
                     "gold":"",
-                    "predicted_programs":decomposing_output
+                    "predicted_programs":decomposing_output,
+                    "evidence":evidence_texts
                 }]
                 final_prediction = self.program_executor.execute_on_dataset(sample)
                 if final_prediction:

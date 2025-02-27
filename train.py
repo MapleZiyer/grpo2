@@ -141,8 +141,8 @@ class GRPO:
             # 解码生成的序列
             generated_texts = self.tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
             reference_texts = batch['raw_input']
-            # 从原文本中提取实际的声明内容
-            original_text = reference_texts.split("Original statement:")[-1].strip()
+            # 从原文本中提取实际的声明内容，确保先获取列表中的第一个元素
+            original_text = reference_texts[0].split("Original statement:")[-1].strip()
             evidence_texts = batch['raw_evidence']
 
             print(f"\n原文本为:{original_text}")

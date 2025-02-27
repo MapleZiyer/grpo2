@@ -146,7 +146,7 @@ class GRPO:
             )
         
         # 使用FP16进行前向传播和反向传播
-        with autocast():
+        with torch.amp.autocast('cuda'):
             # 解码生成的序列并确保正确处理文本
             generated_texts = self.tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
             reference_texts = batch['raw_input']

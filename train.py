@@ -142,6 +142,7 @@ class GRPO:
             reference_texts = batch['raw_input']
             evidence_texts = batch['raw_evidence']
 
+            print(f"\n原文本为:{reference_texts}")
             print(f"\n生成的文本为:{generated_texts[0]}\n")
             
             original_embedding = self.similarity_model.encode(reference_texts)
@@ -152,6 +153,7 @@ class GRPO:
             corrected_embedding = corrected_embedding.reshape(1, -1)
             similarity = cosine_similarity(original_embedding, corrected_embedding)
             similarity = similarity[0][0]
+            print(f"\n余弦相似度为:{similarity}\n")
 
             if similarity < 0.7:
                 rewards = 0.0
@@ -172,6 +174,8 @@ class GRPO:
                 else:
                     rewards = 0.0
             
+            print(f"\nrewards为:{rewards}\n")
+
             # 计算策略梯度
             old_log_probs = outputs.scores[0].log_softmax(dim=-1)
             new_outputs = self.model(

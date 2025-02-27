@@ -135,6 +135,8 @@ class GRPO:
             generated_texts = self.tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
             reference_texts = batch['raw_input']
             evidence_texts = batch['raw_evidence']
+
+            print(generated_texts[0])
             
             original_embedding = self.similarity_model.encode(reference_texts)
             corrected_embedding = self.similarity_model.encode(generated_texts[0])

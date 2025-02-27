@@ -42,8 +42,8 @@ class HoverDataset(Dataset):
         num_hops = item['num_hops']
         
         # 添加prompt引导生成
-        prompt = "你是一个资深的修正错误句子的专家，下面原始声明是错误的，请根据以下证据生成一个修改后原生声明，使他变成正确的。要求语义要相近：\n原始声明："
-        input_text = prompt + input_text
+        prompt = "You are an experienced expert in correcting erroneous sentences. Please carefully read the following evidence and correct the errors in the original statement based on the evidence.\n\nRequirements:\n1.The generated statement must be a complete sentence.\n2.Maintain the same theme and core meaning as the original statement.\n3.Correct the erroneous information based on the evidence.\n4.Use clear and accurate language.\n5.Do not generate individual words or phrases.\n6.All modifications must be supported by evidence.\n\nEvidence:{evidence}\n\nOriginal statement:"
+        input_text = prompt.format(evidence=evidence) + input_text
         
         # 编码输入
         inputs = self.tokenizer(

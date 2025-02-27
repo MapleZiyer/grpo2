@@ -133,11 +133,11 @@ class GRPO:
         with autocast():
             # 解码生成的序列
             generated_texts = self.tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
-            reference_texts = [batch['raw_input']]
-            evidence_texts = [batch['raw_evidence']]
+            reference_texts = batch['raw_input']
+            evidence_texts = batch['raw_evidence']
             
-            original_embedding = self.similarity_model.encode([reference_texts])
-            corrected_embedding = self.similarity_model.encode([generated_texts])
+            original_embedding = self.similarity_model.encode(reference_texts)
+            corrected_embedding = self.similarity_model.encode(generated_texts[0])
 
             # 计算余弦相似度
             similarity = cosine_similarity(original_embedding, corrected_embedding)

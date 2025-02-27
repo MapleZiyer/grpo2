@@ -42,8 +42,9 @@ class HoverDataset(Dataset):
         num_hops = item['num_hops']
         
         # 添加prompt引导生成
-        prompt = "You are an experienced expert in correcting erroneous sentences. Please carefully read the following evidence and correct the errors in the original statement based on the evidence.\n\nRequirements:\n1.The generated statement must be a complete sentence.\n2.Maintain the same theme and core meaning as the original statement.\n3.Correct the erroneous information based on the evidence.\n4.Use clear and accurate language.\n5.Do not generate individual words or phrases.\n6.All modifications must be supported by evidence.\n\nEvidence:{evidence}\n\nOriginal statement:"
+        prompt = "You are an experienced expert in correcting erroneous sentences. Please carefully read the following evidence and correct the errors in the original statement based on the evidence.\n\nRequirements:\n1.The generated statement must be a complete sentence.\n2.Maintain the same theme and core meaning as the original statement.\n3.Correct the erroneous information based on the evidence.\n4.Use clear and accurate language.\n5.Do not generate individual words or phrases.\n6.All modifications must be supported by evidence.\n\nEvidence:'{evidence}'\n\nOriginal statement:'"
         input_text = prompt.format(evidence=evidence) + input_text
+        input_text += "'"
         
         # 编码输入
         inputs = self.tokenizer(
@@ -139,13 +140,14 @@ class GRPO:
         with autocast():
             # 解码生成的序列
             generated_texts = self.tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
-            reference_texts = batch['raw_input']
+            # 从原文本中提取实际的声明内容
+            original_text = reference_texts.split("Original statement:")[-1].strip()
             evidence_texts = batch['raw_evidence']
 
-            print(f"\n原文本为:{reference_texts}")
+            print(f"\n原文本为:{original_text}")
             print(f"\n生成的文本为:{generated_texts[0]}\n")
             
-            original_embedding = self.similarity_model.encode(reference_texts)
+            original_embedding = self.similarity_model.encode(original_text)
             corrected_embedding = self.similarity_model.encode(generated_texts[0])
 
             # 调整向量维度并计算余弦相似度

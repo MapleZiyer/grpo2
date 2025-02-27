@@ -222,9 +222,10 @@ def main():
     model = T5ForConditionalGeneration.from_pretrained(
         model_name,
         device_map='balanced',
-        gradient_checkpointing=True,  # 启用梯度检查点
         torch_dtype=torch.float16  # 使用FP16
     )
+
+    model.enable_gradient_checkpointing()
     
     if world_size > 1:
         model = DDP(model, device_ids=[rank])

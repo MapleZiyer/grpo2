@@ -15,7 +15,7 @@ from ProgramFC.models.program_execution import Program_Execution
 from torch.cuda.amp import autocast, GradScaler
 
 class HoverDataset(Dataset):
-    def __init__(self, data_path: str, tokenizer: T5Tokenizer, max_length: int = 2048):  # 减小max_length默认值
+    def __init__(self, data_path: str, tokenizer: T5Tokenizer, max_length: int = 4096):  # 减小max_length默认值
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.data = self.load_data(data_path)
@@ -42,11 +42,11 @@ class HoverDataset(Dataset):
         num_hops = item['num_hops']
         
         # 添加prompt引导生成
-        prompt = """You are an experienced expert in correcting erroneous sentences. Please read the following evidence carefully and correct the errors in the original statement.
+        prompt = """You are an experienced expert in correcting erroneous sentences. Please read the following evidence carefully and correct the errors in the original statement.Make sure to preserve the structure and key meaning of the original statement, only changing the incorrect parts.
 
-                Task: Based on the provided evidence, identify the incorrect parts of the original statement and fix them to ensure accuracy.
+                Task: Based on the provided evidence, identify the incorrect parts of the original statement and fix them to ensure accuracy.Make sure to preserve the structure and key meaning of the original statement, only changing the incorrect parts.
 
-                Requirements:The generated statement must be a complete sentence.Maintain the same theme and core meaning as the original statement.Correct the erroneous information based on the evidence.Use clear and accurate language.All modifications must be supported by evidence.You can't delete the entire sentence that contains the wrong part of the sentence, but rather fix the error.
+                Requirements:Make sure to preserve the structure and key meaning of the original statement, only changing the incorrect parts.The generated statement must be a complete sentence.Maintain the same theme and core meaning as the original statement.Correct the erroneous information based on the evidence.Use clear and accurate language.All modifications must be supported by evidence.You can't delete the entire sentence that contains the wrong part of the sentence, but rather fix the error.
 
                 Evidence: {evidence}
 
@@ -88,7 +88,7 @@ class GRPO:
         max_grad_norm: float = 1.0,
         temperature: float = 0.7,
         top_p: float = 1.0,
-        max_length: int = 512,  # 减小max_length默认值
+        max_length: int = 4096, 
         program_generator = Reasoning_Program_Generator(),
         program_executor = Program_Execution()
     ):
@@ -160,20 +160,32 @@ class GRPO:
                     
                 # 确保生成的文本不为空且长度合理
                 if not generated_texts or not generated_texts[0].strip():
-                    print("警告：生成的文本为空")
+                    if dist.get_rank() == 0:
+                        print("警告：生成的文本为空")
+                    else:
+                        print(f"[GPU {dist.get_rank()}] 警告：生成的文本为空")
                     return {"loss": 0.0, "reward": 0.0}
                     
                 if len(generated_texts[0].split()) < 3:
-                    print("警告：生成的文本过短")
+                    if dist.get_rank() == 0:
+                        print("警告：生成的文本过短")
+                    else:
+                        print(f"[GPU {dist.get_rank()}] 警告：生成的文本过短")
                     return {"loss": 0.0, "reward": 0.0}
             except Exception as e:
-                print(f"处理文本时出错：{str(e)}")
+                if dist.get_rank() == 0:
+                    print(f"处理文本时出错：{str(e)}")
+                else:
+                    print(f"[GPU {dist.get_rank()}] 处理文本时出错：{str(e)}")
                 return {"loss": 0.0, "reward": 0.0}
             evidence_texts = batch['raw_evidence']
 
-            print(f"\n输入给模型的文本为:{reference_texts[0]}")
-            print(f"\n原声明为:{original_text}")
-            print(f"\n生成的声明为:{generated_texts[0]}\n")
+            if dist.get_rank() == 0:
+                print(f"\n原声明为:{original_text}")
+                print(f"\n生成的声明为:{generated_texts[0]}\n")
+            else:
+                print(f"[GPU {dist.get_rank()}] \n原声明为:{original_text}")
+                print(f"[GPU {dist.get_rank()}] \n生成的声明为:{generated_texts[0]}\n")
             
             original_embedding = self.similarity_model.encode(original_text)
             corrected_embedding = self.similarity_model.encode(generated_texts[0])
@@ -183,13 +195,19 @@ class GRPO:
             corrected_embedding = corrected_embedding.reshape(1, -1)
             similarity = cosine_similarity(original_embedding, corrected_embedding)
             similarity = similarity[0][0]
-            print(f"\n余弦相似度为:{similarity}\n")
+            if dist.get_rank() == 0:
+                print(f"\n余弦相似度为:{similarity}\n")
+            else:
+                print(f"[GPU {dist.get_rank()}] \n余弦相似度为:{similarity}\n")
 
             if similarity < 0.7:
                 rewards = 0.0
             else:
                 decomposing_output = self.program_generator.batch_generate_programs(generated_texts)
-                print(decomposing_output)
+                if dist.get_rank() == 0:
+                    print(decomposing_output)
+                else:
+                    print(f"[GPU {dist.get_rank()}] {decomposing_output}")
                 sample = [{
                     "idx":0,
                     "id":batch['id'],
@@ -204,7 +222,10 @@ class GRPO:
                 else:
                     rewards = 0.0
             
-            print(f"\nrewards为:{rewards}\n")
+            if dist.get_rank() == 0:
+                print(f"\nrewards为:{rewards}\n")
+            else:
+                print(f"[GPU {dist.get_rank()}] \nrewards为:{rewards}\n")
 
             # 计算策略梯度
             old_log_probs = outputs.scores[0].log_softmax(dim=-1)

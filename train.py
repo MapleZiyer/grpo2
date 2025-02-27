@@ -15,7 +15,7 @@ from ProgramFC.models.program_execution import Program_Execution
 from torch.cuda.amp import autocast, GradScaler
 
 class HoverDataset(Dataset):
-    def __init__(self, data_path: str, tokenizer: T5Tokenizer, max_length: int = 1024):  # 减小max_length默认值
+    def __init__(self, data_path: str, tokenizer: T5Tokenizer, max_length: int = 2048):  # 减小max_length默认值
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.data = self.load_data(data_path)
@@ -42,8 +42,16 @@ class HoverDataset(Dataset):
         num_hops = item['num_hops']
         
         # 添加prompt引导生成
-        prompt = "You are an experienced expert in correcting erroneous sentences. Please carefully read the following evidence and correct the errors in the original statement based on the evidence.\n\nRequirements:\n1.Maintain the same theme and core meaning as the original statement.\n2.All modifications must be supported by evidence.\n\nEvidence:'{evidence}'\n\nOriginal statement:"
-        input_text = prompt.format(evidence=evidence) + input_text
+        prompt = """You are an experienced expert in correcting erroneous sentences. Please read the following evidence carefully and correct the errors in the original statement.
+
+                Task: Based on the provided evidence, identify the incorrect parts of the original statement and fix them to ensure accuracy.
+
+                Evidence: {evidence}
+
+                Original statement: {original_statement}
+
+                Corrected statement: """
+        input_text = prompt.format(evidence=evidence).format(original_statement=input_text)
         
         # 编码输入
         inputs = self.tokenizer(
@@ -76,8 +84,8 @@ class GRPO:
         gradient_accumulation_steps: int = 8,
         warmup_steps: int = 1000,
         max_grad_norm: float = 1.0,
-        temperature: float = 1.0,
-        top_p: float = 0.9,
+        temperature: float = 0.7,
+        top_p: float = 1.0,
         max_length: int = 512,  # 减小max_length默认值
         program_generator = Reasoning_Program_Generator(),
         program_executor = Program_Execution()
@@ -132,16 +140,33 @@ class GRPO:
                 output_scores=True,
                 temperature=self.temperature,
                 top_p=self.top_p,
-                do_sample=True
+                do_sample=False
             )
         
         # 使用FP16进行前向传播和反向传播
         with autocast():
-            # 解码生成的序列
+            # 解码生成的序列并确保正确处理文本
             generated_texts = self.tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
             reference_texts = batch['raw_input']
-            # 从原文本中提取实际的声明内容，确保先获取列表中的第一个元素
-            original_text = reference_texts[0].split("Original statement:")[-1].strip()
+            
+            try:
+                # 从原文本中提取实际的声明内容
+                if isinstance(reference_texts, list):
+                    original_text = reference_texts[0].split("Original statement:")[-1].strip()
+                else:
+                    original_text = reference_texts.split("Original statement:")[-1].strip()
+                    
+                # 确保生成的文本不为空且长度合理
+                if not generated_texts or not generated_texts[0].strip():
+                    print("警告：生成的文本为空")
+                    return {"loss": 0.0, "reward": 0.0}
+                    
+                if len(generated_texts[0].split()) < 3:
+                    print("警告：生成的文本过短")
+                    return {"loss": 0.0, "reward": 0.0}
+            except Exception as e:
+                print(f"处理文本时出错：{str(e)}")
+                return {"loss": 0.0, "reward": 0.0}
             evidence_texts = batch['raw_evidence']
 
             print(f"\n输入给模型的文本为:{reference_texts[0]}")

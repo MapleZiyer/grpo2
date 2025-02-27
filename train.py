@@ -88,7 +88,7 @@ class GRPO:
         max_grad_norm: float = 1.0,
         temperature: float = 0.7,
         top_p: float = 1.0,
-        max_length: int = 256,  # 减小max_length默认值
+        max_length: int = 4096,
         program_generator = Reasoning_Program_Generator(),
         program_executor = Program_Execution()
     ):
@@ -102,11 +102,11 @@ class GRPO:
         self.max_grad_norm = max_grad_norm
         self.temperature = temperature
         self.top_p = top_p
-        self.max_length = max_length  # 设置max_length属性
+        self.max_length = max_length
         self.global_step = 0
         self.program_generator = program_generator
         self.program_executor = program_executor
-        self.scaler = torch.amp.GradScaler(device='cuda')  
+        self.scaler = torch.amp.GradScaler(device='cuda')  # 添加FP16 scaler
         
         # 使用AdaFactor优化器，使用自动学习率调整
         from transformers import Adafactor
@@ -302,15 +302,18 @@ def main():
     
     model = T5ForConditionalGeneration.from_pretrained(
         model_name,
-        torch_dtype=torch.float16  # 使用FP16
+        torch_dtype=torch.float16,  # 使用FP16
+        low_cpu_mem_usage=True,  # 降低CPU内存使用
+        device_map="auto"  # 自动设备映射
     ).to(device)
 
     # 启用梯度检查点
     model.gradient_checkpointing_enable()
+    model.enable_input_require_grads()  # 启用输入梯度
     
     if world_size > 1:
         # 在分布式训练中使用DDP包装模型
-        model = DDP(model.to(device), device_ids=[rank % torch.cuda.device_count()])
+        model = DDP(model, device_ids=[rank % torch.cuda.device_count()], find_unused_parameters=True)
     
     # 初始化数据集和分布式采样器
     train_dataset = HoverDataset(
@@ -323,11 +326,11 @@ def main():
         batch_size=1,  # 使用较小的batch_size以减少内存使用
         shuffle=(sampler is None),
         sampler=sampler,
-        num_workers=4
+        num_workers=2  # 减少num_workers以降低内存使用
     )
     
     # 设置梯度累积步数
-    gradient_accumulation_steps = 8  # 增加梯度累积步数
+    gradient_accumulation_steps = 16  # 增加梯度累积步数以减少显存使用
     
     # 初始化训练器
     trainer = GRPO(

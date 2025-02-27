@@ -204,7 +204,7 @@ class GRPO:
         
         return {
             "loss": loss.item() * self.gradient_accumulation_steps,
-            "reward": rewards.mean().item()
+            "reward": rewards
         }
 
 def setup_distributed():

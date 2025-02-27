@@ -152,11 +152,14 @@ class GRPO:
             reference_texts = batch['raw_input']
             
             try:
-                # 从原文本中提取实际的声明内容
+                # 从原文本中提取实际的声明内容并进行清理
                 if isinstance(reference_texts, list):
                     original_text = reference_texts[0].split("Original statement:")[-1].strip()
                 else:
                     original_text = reference_texts.split("Original statement:")[-1].strip()
+                
+                # 清理文本，移除多余的空格和换行符
+                original_text = ' '.join(original_text.split())
                     
                 # 确保生成的文本不为空且长度合理
                 if not generated_texts or not generated_texts[0].strip():

@@ -90,15 +90,14 @@ class GRPO:
         self.global_step = 0
         self.program_generator = program_generator
         self.program_executor = program_executor
-        self.scaler = GradScaler()  # 添加FP16训练的梯度缩放器
+        self.scaler = GradScaler('cuda')  # 更新FP16训练的梯度缩放器初始化方式
         
-        # 使用AdaFactor优化器
+        # 使用AdaFactor优化器，使用自动学习率调整
         from transformers import Adafactor
         self.optimizer = Adafactor(
             model.parameters(),
-            lr=learning_rate,
             scale_parameter=True,
-            relative_step=False,
+            relative_step=True,
             warmup_init=True
         )
 

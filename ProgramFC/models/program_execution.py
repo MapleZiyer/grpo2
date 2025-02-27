@@ -32,7 +32,7 @@ class Program_Execution:
         self.dataset_name = 'HOVER'
         self.tokenizer = T5Tokenizer.from_pretrained(self.model_name)
         self.model = T5ForConditionalGeneration.from_pretrained(self.model_name)
-        self.model.parallelize()
+        # 移除parallelize调用，因为我们使用DDP进行分布式训练
         self.setting = 'gold'
         self.QA_module = T5_Question_Answering(self.model, self.tokenizer)
         self.corpus_index_path = './datasets/HOVER/corpus/index'

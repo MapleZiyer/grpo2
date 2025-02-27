@@ -109,9 +109,17 @@ class GRPO:
         
         # 生成序列
         with torch.no_grad():
+            # 确保输入维度正确
+            input_ids = batch['input_ids'].to(self.device)
+            if len(input_ids.shape) == 1:
+                input_ids = input_ids.unsqueeze(0)
+            attention_mask = batch['attention_mask'].to(self.device)
+            if len(attention_mask.shape) == 1:
+                attention_mask = attention_mask.unsqueeze(0)
+            
             outputs = self.model.module.generate(
-                input_ids=batch['input_ids'].unsqueeze(0),
-                attention_mask=batch['attention_mask'],
+                input_ids=input_ids,
+                attention_mask=attention_mask,
                 max_length=self.max_length,
                 num_return_sequences=1,
                 return_dict_in_generate=True,
@@ -156,9 +164,9 @@ class GRPO:
             # 计算策略梯度
             old_log_probs = outputs.scores[0].log_softmax(dim=-1)
             new_outputs = self.model(
-                input_ids=batch['input_ids'].unsqueeze(0),
-                attention_mask=batch['attention_mask'].unsqueeze(0),
-                labels=outputs.sequences
+                input_ids=batch['input_ids'].unsqueeze(0).to(self.device),
+                attention_mask=batch['attention_mask'].unsqueeze(0).to(self.device),
+                labels=outputs.sequences.to(self.device)
             )
             new_log_probs = new_outputs.logits.log_softmax(dim=-1)
             
@@ -225,9 +233,8 @@ def main():
     
     model = T5ForConditionalGeneration.from_pretrained(
         model_name,
-        device_map='balanced',  # 使用balanced模式进行设备分配
         torch_dtype=torch.float16  # 使用FP16
-    )
+    ).to(device)
 
     # 启用梯度检查点
     model.gradient_checkpointing_enable()

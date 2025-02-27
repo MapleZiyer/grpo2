@@ -225,10 +225,11 @@ def main():
         torch_dtype=torch.float16  # 使用FP16
     )
 
-    model._set_gradient_checkpointing(model, True)
+    # 这里使用 enable_gradient_checkpointing 启用梯度检查点
+    model.enable_gradient_checkpointing()
     
     if world_size > 1:
-        model = DDP(model, device_ids=[rank])
+        model = DDP(model)
     
     # 初始化数据集和分布式采样器
     train_dataset = HoverDataset(

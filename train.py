@@ -41,6 +41,10 @@ class HoverDataset(Dataset):
         id = item['id']
         num_hops = item['num_hops']
         
+        # 添加prompt引导生成
+        prompt = "你是一个资深的修正错误句子的专家，下面原始声明是错误的，请根据以下证据生成一个修改后原生声明，使他变成正确的。要求语义要相近：\n原始声明："
+        input_text = prompt + input_text
+        
         # 编码输入
         inputs = self.tokenizer(
             input_text,

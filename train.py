@@ -226,7 +226,7 @@ def main():
     )
 
     # 这里使用 enable_gradient_checkpointing 启用梯度检查点
-    model.enable_gradient_checkpointing()
+    model._set_gradient_checkpointing(model, True)
     
     if world_size > 1:
         model = DDP(model)

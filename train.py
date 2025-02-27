@@ -195,12 +195,14 @@ def setup_distributed():
     if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
         rank = int(os.environ['RANK'])
         world_size = int(os.environ['WORLD_SIZE'])
+        local_rank = int(os.environ.get('LOCAL_RANK', 0))
     else:
         rank = 0
         world_size = 1
+        local_rank = 0
     
     if torch.cuda.is_available():
-        device = torch.device(f'cuda:{rank}')
+        device = torch.device(f'cuda:{local_rank}')
         torch.cuda.set_device(device)
     else:
         device = torch.device('cpu')
@@ -218,18 +220,25 @@ def main():
     # 初始化模型和tokenizer
     model_name = "google/flan-t5-large"  # 或其他T5模型变体
     tokenizer = T5Tokenizer.from_pretrained(model_name)
-    # 使用device_map='balanced'启用模型并行化，并开启梯度检查点
+    # 根据local_rank设置device_map
+    if torch.cuda.is_available():
+        device_map = {'': rank % torch.cuda.device_count()}
+    else:
+        device_map = 'cpu'
+    
     model = T5ForConditionalGeneration.from_pretrained(
         model_name,
-        device_map='balanced',
+        device_map=device_map,
         torch_dtype=torch.float16  # 使用FP16
     )
 
-    # 这里使用 enable_gradient_checkpointing 启用梯度检查点
-    model._set_gradient_checkpointing(model, True)
+    # 启用梯度检查点
+    model.gradient_checkpointing_enable()
     
     if world_size > 1:
-        model = DDP(model)
+        # 确保模型在正确的设备上
+        model = model.to(device)
+        model = DDP(model, device_ids=[rank % torch.cuda.device_count()])
     
     # 初始化数据集和分布式采样器
     train_dataset = HoverDataset(

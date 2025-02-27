@@ -46,6 +46,8 @@ class HoverDataset(Dataset):
 
                 Task: Based on the provided evidence, identify the incorrect parts of the original statement and fix them to ensure accuracy.
 
+                Requirements:The generated statement must be a complete sentence.Maintain the same theme and core meaning as the original statement.Correct the erroneous information based on the evidence.Use clear and accurate language.All modifications must be supported by evidence.You can't delete the entire sentence that contains the wrong part of the sentence, but rather fix the error.
+
                 Evidence: {evidence}
 
                 Original statement: {original_statement}
@@ -140,7 +142,7 @@ class GRPO:
                 output_scores=True,
                 temperature=self.temperature,
                 top_p=self.top_p,
-                do_sample=False
+                do_sample=True
             )
         
         # 使用FP16进行前向传播和反向传播

@@ -225,7 +225,7 @@ def main():
         torch_dtype=torch.float16  # 使用FP16
     )
 
-    model.enable_gradient_checkpointing()
+    model._set_gradient_checkpointing(model, True)
     
     if world_size > 1:
         model = DDP(model, device_ids=[rank])

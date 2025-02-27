@@ -17,6 +17,10 @@ class Reasoning_Program_Generator:
     def batch_generate_programs(self, generated_texts):
         temperature = 0.0 if self.num_programs_per_example == 1 else 0.7
 
+        # 确保输入是字符串类型
+        if isinstance(generated_texts, list):
+            generated_texts = generated_texts[0]
+
         full_prompt = self.prompt_loader.prompt_construction(generated_texts, self.dataset_name)
 
         output = self.openai_api.generate(full_prompt, temperature)

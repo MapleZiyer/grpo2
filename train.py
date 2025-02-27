@@ -15,7 +15,7 @@ from ProgramFC.models.program_execution import Program_Execution
 from torch.cuda.amp import autocast, GradScaler
 
 class HoverDataset(Dataset):
-    def __init__(self, data_path: str, tokenizer: T5Tokenizer, max_length: int = 2048):
+    def __init__(self, data_path: str, tokenizer: T5Tokenizer, max_length: int = 1024):  # 减小max_length默认值
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.data = self.load_data(data_path)
@@ -42,9 +42,8 @@ class HoverDataset(Dataset):
         num_hops = item['num_hops']
         
         # 添加prompt引导生成
-        prompt = "You are an experienced expert in correcting erroneous sentences. Please carefully read the following evidence and correct the errors in the original statement based on the evidence.\n\nRequirements:\n1.The generated statement must be a complete sentence.\n2.Maintain the same theme and core meaning as the original statement.\n3.Correct the erroneous information based on the evidence.\n4.Use clear and accurate language.\n5.Do not generate individual words or phrases.\n6.All modifications must be supported by evidence.\n\nEvidence:'{evidence}'\n\nOriginal statement:'"
+        prompt = "You are an experienced expert in correcting erroneous sentences. Please carefully read the following evidence and correct the errors in the original statement based on the evidence.\n\nRequirements:\n1.The generated statement must be a complete sentence.\n2.Maintain the same theme and core meaning as the original statement.\n3.Correct the erroneous information based on the evidence.\n4.Use clear and accurate language.\n5.Do not generate individual words or phrases.\n6.All modifications must be supported by evidence.\n\nEvidence:'{evidence}'\n\nOriginal statement:"
         input_text = prompt.format(evidence=evidence) + input_text
-        input_text += "'"
         
         # 编码输入
         inputs = self.tokenizer(
@@ -74,12 +73,12 @@ class GRPO:
         learning_rate: float = 1e-5,
         eps_clip: float = 0.2,
         similarity_model = SentenceTransformer('paraphrase-MiniLM-L6-v2'),
-        gradient_accumulation_steps: int = 8,  # 增加梯度累积步数
+        gradient_accumulation_steps: int = 8,
         warmup_steps: int = 1000,
         max_grad_norm: float = 1.0,
         temperature: float = 1.0,
         top_p: float = 0.9,
-        max_length: int = 2048,  # 添加max_length参数
+        max_length: int = 512,  # 减小max_length默认值
         program_generator = Reasoning_Program_Generator(),
         program_executor = Program_Execution()
     ):

@@ -111,10 +111,12 @@ class GRPO:
         with torch.no_grad():
             # 确保输入维度正确
             input_ids = batch['input_ids'].to(self.device)
-            if len(input_ids.shape) == 1:
-                input_ids = input_ids.unsqueeze(0)
             attention_mask = batch['attention_mask'].to(self.device)
-            if len(attention_mask.shape) == 1:
+            
+            # 添加批次维度如果需要
+            if input_ids.dim() == 1:
+                input_ids = input_ids.unsqueeze(0)
+            if attention_mask.dim() == 1:
                 attention_mask = attention_mask.unsqueeze(0)
             
             outputs = self.model.module.generate(
@@ -169,8 +171,8 @@ class GRPO:
             # 计算策略梯度
             old_log_probs = outputs.scores[0].log_softmax(dim=-1)
             new_outputs = self.model(
-                input_ids=batch['input_ids'].unsqueeze(0).to(self.device),
-                attention_mask=batch['attention_mask'].unsqueeze(0).to(self.device),
+                input_ids=input_ids,  # 直接使用已经处理过维度的input_ids
+                attention_mask=attention_mask,  # 直接使用已经处理过维度的attention_mask
                 labels=outputs.sequences.to(self.device)
             )
             new_log_probs = new_outputs.logits.log_softmax(dim=-1)

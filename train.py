@@ -138,7 +138,7 @@ class GRPO:
             reference_texts = batch['raw_input']
             evidence_texts = batch['raw_evidence']
 
-            print(generated_texts[0])
+            print(f"\n生成的文本为:{generated_texts[0]}\n")
             
             original_embedding = self.similarity_model.encode(reference_texts)
             corrected_embedding = self.similarity_model.encode(generated_texts[0])
@@ -283,7 +283,7 @@ def main():
         
         total_loss = 0
         total_reward = 0
-        for batch in train_dataloader:
+        for batch_idx, batch in enumerate(train_dataloader):
             # 移动数据到设备
             batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v
                     for k, v in batch.items()}

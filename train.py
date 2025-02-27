@@ -90,7 +90,7 @@ class GRPO:
         self.global_step = 0
         self.program_generator = program_generator
         self.program_executor = program_executor
-        self.scaler = GradScaler('cuda')  # 更新FP16训练的梯度缩放器初始化方式
+        self.scaler = GradScaler(device_type='cuda')  # 更新FP16训练的梯度缩放器初始化方式
         
         # 使用AdaFactor优化器，使用自动学习率调整
         from transformers import Adafactor
@@ -107,7 +107,7 @@ class GRPO:
         
         # 生成序列
         with torch.no_grad():
-            outputs = self.model.generate(
+            outputs = self.model.module.generate(
                 input_ids=batch['input_ids'].unsqueeze(0),
                 attention_mask=batch['attention_mask'].unsqueeze(0),
                 max_length=self.max_length,

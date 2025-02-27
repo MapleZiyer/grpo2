@@ -216,7 +216,7 @@ def main():
     device, rank, world_size = setup_distributed()
     
     # 初始化模型和tokenizer
-    model_name = "google/flan-t5-xl"  # 或其他T5模型变体
+    model_name = "google/flan-t5-large"  # 或其他T5模型变体
     tokenizer = T5Tokenizer.from_pretrained(model_name)
     # 使用device_map='balanced'启用模型并行化，并开启梯度检查点
     model = T5ForConditionalGeneration.from_pretrained(

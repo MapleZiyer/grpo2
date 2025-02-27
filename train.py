@@ -111,13 +111,14 @@ class GRPO:
         with torch.no_grad():
             outputs = self.model.module.generate(
                 input_ids=batch['input_ids'].unsqueeze(0),
-                attention_mask=batch['attention_mask'].unsqueeze(0),
+                attention_mask=batch['attention_mask'],
                 max_length=self.max_length,
                 num_return_sequences=1,
                 return_dict_in_generate=True,
                 output_scores=True,
                 temperature=self.temperature,
-                top_p=self.top_p
+                top_p=self.top_p,
+                do_sample=True
             )
         
         # 使用FP16进行前向传播和反向传播
@@ -221,15 +222,10 @@ def main():
     # 初始化模型和tokenizer
     model_name = "google/flan-t5-large"  # 或其他T5模型变体
     tokenizer = T5Tokenizer.from_pretrained(model_name)
-    # 根据local_rank设置device_map
-    if torch.cuda.is_available():
-        device_map = {'': rank % torch.cuda.device_count()}
-    else:
-        device_map = 'cpu'
     
     model = T5ForConditionalGeneration.from_pretrained(
         model_name,
-        device_map=device_map,
+        device_map='balanced',  # 使用balanced模式进行设备分配
         torch_dtype=torch.float16  # 使用FP16
     )
 
@@ -237,9 +233,8 @@ def main():
     model.gradient_checkpointing_enable()
     
     if world_size > 1:
-        # 确保模型在正确的设备上
-        model = model.to(device)
-        model = DDP(model, device_ids=[rank % torch.cuda.device_count()])
+        # 在分布式训练中使用DDP包装模型
+        model = DDP(model.to(device), device_ids=[rank % torch.cuda.device_count()])
     
     # 初始化数据集和分布式采样器
     train_dataset = HoverDataset(

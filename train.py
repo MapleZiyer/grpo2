@@ -15,7 +15,7 @@ from ProgramFC.models.program_execution import Program_Execution
 from torch.cuda.amp import autocast, GradScaler
 
 class HoverDataset(Dataset):
-    def __init__(self, data_path: str, tokenizer: T5Tokenizer, max_length: int = 512):
+    def __init__(self, data_path: str, tokenizer: T5Tokenizer, max_length: int = 2048):
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.data = self.load_data(data_path)
@@ -140,6 +140,7 @@ class GRPO:
         with autocast():
             # 解码生成的序列
             generated_texts = self.tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
+            reference_texts = batch['raw_input']
             # 从原文本中提取实际的声明内容
             original_text = reference_texts.split("Original statement:")[-1].strip()
             evidence_texts = batch['raw_evidence']

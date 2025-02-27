@@ -88,7 +88,7 @@ class GRPO:
         max_grad_norm: float = 1.0,
         temperature: float = 0.7,
         top_p: float = 1.0,
-        max_length: int = 4096, 
+        max_length: int = 256,  # 减小max_length默认值
         program_generator = Reasoning_Program_Generator(),
         program_executor = Program_Execution()
     ):

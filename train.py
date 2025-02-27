@@ -106,7 +106,7 @@ class GRPO:
         self.global_step = 0
         self.program_generator = program_generator
         self.program_executor = program_executor
-        self.scaler = torch.amp.GradScaler(device='cuda')  # 添加FP16 scaler
+        self.scaler = torch.amp.GradScaler()  # 移除device参数
         
         # 使用AdaFactor优化器，使用自动学习率调整
         from transformers import Adafactor
@@ -303,8 +303,7 @@ def main():
     model = T5ForConditionalGeneration.from_pretrained(
         model_name,
         torch_dtype=torch.float16,  # 使用FP16
-        low_cpu_mem_usage=True,  # 降低CPU内存使用
-        device_map="auto"  # 自动设备映射
+        low_cpu_mem_usage=True  # 降低CPU内存使用
     ).to(device)
 
     # 启用梯度检查点
@@ -360,10 +359,9 @@ def main():
             total_loss += metrics['loss']
             total_reward += metrics['reward']
             
-            # 每累积指定步数的梯度后才进行参数更新
+            # 每个batch的处理完成
             if (batch_idx + 1) % gradient_accumulation_steps == 0:
-                optimizer.step()
-                optimizer.zero_grad()
+                pass  # 移除重复的优化器更新
         
         if world_size > 1:
             # 在多GPU环境下同步损失和奖励

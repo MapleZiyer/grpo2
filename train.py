@@ -209,7 +209,8 @@ def main():
     # 初始化模型和tokenizer
     model_name = "google/flan-t5-xl"  # 或其他T5模型变体
     tokenizer = T5Tokenizer.from_pretrained(model_name)
-    model = T5ForConditionalGeneration.from_pretrained(model_name).to(device)
+    # 使用device_map='balanced'启用模型并行化
+    model = T5ForConditionalGeneration.from_pretrained(model_name, device_map='balanced')
     
     if world_size > 1:
         model = DDP(model, device_ids=[rank])
@@ -222,11 +223,14 @@ def main():
     sampler = DistributedSampler(train_dataset) if world_size > 1 else None
     train_dataloader = DataLoader(
         train_dataset,
-        batch_size=1,  # GRPO通常使用小批量
+        batch_size=1,  # 使用较小的batch_size以减少内存使用
         shuffle=(sampler is None),
         sampler=sampler,
         num_workers=4
     )
+    
+    # 设置梯度累积步数
+    gradient_accumulation_steps = 4  # 累积4个步骤的梯度再更新
     
     # 初始化训练器
     trainer = GRPO(
@@ -250,8 +254,15 @@ def main():
             
             # 训练步骤
             metrics = trainer.train_step(batch)
+            # 根据梯度累积步数缩放损失
+            metrics['loss'] = metrics['loss'] / gradient_accumulation_steps
             total_loss += metrics['loss']
             total_reward += metrics['reward']
+            
+            # 每累积指定步数的梯度后才进行参数更新
+            if (batch_idx + 1) % gradient_accumulation_steps == 0:
+                optimizer.step()
+                optimizer.zero_grad()
         
         if world_size > 1:
             # 在多GPU环境下同步损失和奖励

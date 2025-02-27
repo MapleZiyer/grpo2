@@ -74,6 +74,7 @@ class GRPO:
         max_grad_norm: float = 1.0,
         temperature: float = 1.0,
         top_p: float = 0.9,
+        max_length: int = 2048,  # 添加max_length参数
         program_generator = Reasoning_Program_Generator(),
         program_executor = Program_Execution()
     ):
@@ -87,6 +88,7 @@ class GRPO:
         self.max_grad_norm = max_grad_norm
         self.temperature = temperature
         self.top_p = top_p
+        self.max_length = max_length  # 设置max_length属性
         self.global_step = 0
         self.program_generator = program_generator
         self.program_executor = program_executor

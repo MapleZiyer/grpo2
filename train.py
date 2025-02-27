@@ -51,7 +51,7 @@ class HoverDataset(Dataset):
                 Original statement: {original_statement}
 
                 Corrected statement: """
-        input_text = prompt.format(evidence=evidence).format(original_statement=input_text)
+        input_text = prompt.format(evidence=evidence, original_statement=input_text)
         
         # 编码输入
         inputs = self.tokenizer(
@@ -104,7 +104,7 @@ class GRPO:
         self.global_step = 0
         self.program_generator = program_generator
         self.program_executor = program_executor
-        self.scaler = GradScaler()  # 修正GradScaler初始化
+        self.scaler = torch.amp.GradScaler(device='cuda')  
         
         # 使用AdaFactor优化器，使用自动学习率调整
         from transformers import Adafactor

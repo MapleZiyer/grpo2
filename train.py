@@ -12,6 +12,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from ProgramFC.models.program_generator import Reasoning_Program_Generator
 from ProgramFC.models.program_execution import Program_Execution
+from torch.cuda.amp import autocast, GradScaler
 
 class HoverDataset(Dataset):
     def __init__(self, data_path: str, tokenizer: T5Tokenizer, max_length: int = 512):
@@ -68,7 +69,7 @@ class GRPO:
         learning_rate: float = 1e-5,
         eps_clip: float = 0.2,
         similarity_model = SentenceTransformer('paraphrase-MiniLM-L6-v2'),
-        gradient_accumulation_steps: int = 4,
+        gradient_accumulation_steps: int = 8,  # 增加梯度累积步数
         warmup_steps: int = 1000,
         max_grad_norm: float = 1.0,
         temperature: float = 1.0,
@@ -89,6 +90,7 @@ class GRPO:
         self.global_step = 0
         self.program_generator = program_generator
         self.program_executor = program_executor
+        self.scaler = GradScaler()  # 添加FP16训练的梯度缩放器
         
         # 使用AdaFactor优化器
         from transformers import Adafactor
@@ -117,63 +119,70 @@ class GRPO:
                 top_p=self.top_p
             )
         
-        # 解码生成的序列
-        generated_texts = self.tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
-        reference_texts = [batch['raw_input']]
-        evidence_texts = [batch['evidence']]
-        
-        original_embedding = self.similarity_model.encode([reference_texts])
-        corrected_embedding = self.similarity_model.encode([generated_texts])
+        # 使用FP16进行前向传播和反向传播
+        with autocast():
+            # 解码生成的序列
+            generated_texts = self.tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
+            reference_texts = [batch['raw_input']]
+            evidence_texts = [batch['evidence']]
+            
+            original_embedding = self.similarity_model.encode([reference_texts])
+            corrected_embedding = self.similarity_model.encode([generated_texts])
 
-        # 计算余弦相似度
-        similarity = cosine_similarity(original_embedding, corrected_embedding)
-        similarity = similarity[0][0]
+            # 计算余弦相似度
+            similarity = cosine_similarity(original_embedding, corrected_embedding)
+            similarity = similarity[0][0]
 
-        if similarity < 0.7:
-            rewards = 0.0
-        else:
-            decomposing_output = self.program_generator.batch_generate_programs(generated_texts)
-            print(decomposing_output)
-            sample = [{
-                "idx":0,
-                "id":batch['id'],
-                "claim":generated_texts,
-                "gold":"",
-                "predicted_programs":decomposing_output
-            }]
-            final_prediction = self.program_executor.execute_on_dataset(sample)
-            if final_prediction:
-                rewards = 1.0
-            else:
+            if similarity < 0.7:
                 rewards = 0.0
-        
-        # 计算策略梯度
-        old_log_probs = outputs.scores[0].log_softmax(dim=-1)
-        new_outputs = self.model(
-            input_ids=batch['input_ids'].unsqueeze(0),
-            attention_mask=batch['attention_mask'].unsqueeze(0),
-            labels=outputs.sequences
-        )
-        new_log_probs = new_outputs.logits.log_softmax(dim=-1)
-        
-        # 计算比率
-        ratio = (new_log_probs - old_log_probs).exp()
-        
-        # 计算裁剪后的目标
-        surr1 = ratio * rewards
-        surr2 = torch.clamp(ratio, 1 - self.eps_clip, 1 + self.eps_clip) * rewards
-        loss = -torch.min(surr1, surr2).mean()
-        
-        # 梯度累积
-        loss = loss / self.gradient_accumulation_steps
-        loss.backward()
+            else:
+                decomposing_output = self.program_generator.batch_generate_programs(generated_texts)
+                print(decomposing_output)
+                sample = [{
+                    "idx":0,
+                    "id":batch['id'],
+                    "claim":generated_texts,
+                    "gold":"",
+                    "predicted_programs":decomposing_output
+                }]
+                final_prediction = self.program_executor.execute_on_dataset(sample)
+                if final_prediction:
+                    rewards = 1.0
+                else:
+                    rewards = 0.0
+            
+            # 计算策略梯度
+            old_log_probs = outputs.scores[0].log_softmax(dim=-1)
+            new_outputs = self.model(
+                input_ids=batch['input_ids'].unsqueeze(0),
+                attention_mask=batch['attention_mask'].unsqueeze(0),
+                labels=outputs.sequences
+            )
+            new_log_probs = new_outputs.logits.log_softmax(dim=-1)
+            
+            # 计算比率
+            ratio = (new_log_probs - old_log_probs).exp()
+            
+            # 计算裁剪后的目标
+            surr1 = ratio * rewards
+            surr2 = torch.clamp(ratio, 1 - self.eps_clip, 1 + self.eps_clip) * rewards
+            loss = -torch.min(surr1, surr2).mean()
+            
+            # 梯度累积
+            loss = loss / self.gradient_accumulation_steps
+
+        # 使用FP16进行反向传播
+        self.scaler.scale(loss).backward()
         
         # 更新步骤
         self.global_step += 1
         if self.global_step % self.gradient_accumulation_steps == 0:
             # 梯度裁剪
+            self.scaler.unscale_(self.optimizer)
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
-            self.optimizer.step()
+            # 使用FP16更新参数
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
             self.optimizer.zero_grad()
         
         return {
@@ -209,8 +218,13 @@ def main():
     # 初始化模型和tokenizer
     model_name = "google/flan-t5-xl"  # 或其他T5模型变体
     tokenizer = T5Tokenizer.from_pretrained(model_name)
-    # 使用device_map='balanced'启用模型并行化
-    model = T5ForConditionalGeneration.from_pretrained(model_name, device_map='balanced')
+    # 使用device_map='balanced'启用模型并行化，并开启梯度检查点
+    model = T5ForConditionalGeneration.from_pretrained(
+        model_name,
+        device_map='balanced',
+        gradient_checkpointing=True,  # 启用梯度检查点
+        torch_dtype=torch.float16  # 使用FP16
+    )
     
     if world_size > 1:
         model = DDP(model, device_ids=[rank])
@@ -230,13 +244,14 @@ def main():
     )
     
     # 设置梯度累积步数
-    gradient_accumulation_steps = 4  # 累积4个步骤的梯度再更新
+    gradient_accumulation_steps = 8  # 增加梯度累积步数
     
     # 初始化训练器
     trainer = GRPO(
         model=model,
         tokenizer=tokenizer,
-        device=device
+        device=device,
+        gradient_accumulation_steps=gradient_accumulation_steps
     )
     
     # 训练循环
